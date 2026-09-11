@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { School, Product, Quote, QuoteItem, OrderItem } from '../types';
 import { formatCurrency } from '../utils/formatters';
 import { generateSchoolPriceListPDF } from '../utils/pdfGenerator';
+import { getLocalQuotes, saveLocalQuotes } from '../utils/localFallback';
 import { QuoteTicketModal } from './QuoteTicketModal';
 import { 
   Calculator, FileSpreadsheet, Search, School as SchoolIcon, 
@@ -104,17 +105,23 @@ export const PriceListAndQuote: React.FC<PriceListAndQuoteProps> = ({
   // Cargar cotizaciones recientes
   const loadRecentQuotes = async () => {
     setIsLoadingQuotes(true);
+    let quotesList: Quote[] | null = null;
     try {
-      const res = await fetch('/api/quotes');
-      if (res.ok) {
-        const data = await res.json();
-        setRecentQuotes(data);
+      const res = await fetch('/api/quotes').catch(() => null);
+      if (res && res.ok) {
+        quotesList = await res.json();
       }
     } catch (err) {
-      console.error('Error al cargar cotizaciones:', err);
-    } finally {
-      setIsLoadingQuotes(false);
+      console.warn('Error al cargar cotizaciones del backend:', err);
     }
+
+    if (quotesList && quotesList.length >= 0) {
+      setRecentQuotes(quotesList);
+      saveLocalQuotes(quotesList);
+    } else {
+      setRecentQuotes(getLocalQuotes());
+    }
+    setIsLoadingQuotes(false);
   };
 
   useEffect(() => {
@@ -328,21 +335,44 @@ export const PriceListAndQuote: React.FC<PriceListAndQuoteProps> = ({
         notes: quoteNotes.trim()
       };
 
-      const res = await fetch('/api/quotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      let savedQuote: Quote | null = null;
+      try {
+        const res = await fetch('/api/quotes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
 
-      const savedQuote = await res.json();
-      if (!res.ok) throw new Error(savedQuote.error || 'Error al guardar cotización');
+        if (res.ok) {
+          savedQuote = await res.json();
+        }
+      } catch (e) {}
+
+      if (!savedQuote) {
+        // Fallback local (GitHub Pages)
+        const quoteId = Date.now();
+        savedQuote = {
+          id: quoteId,
+          folio: `COT-${Math.floor(1000 + Math.random() * 9000)}`,
+          customer_name: payload.customer_name,
+          customer_phone: payload.customer_phone,
+          school_name: payload.school_name,
+          seller_name: payload.seller_name,
+          total_amount: payload.total_amount,
+          items: quoteItems,
+          notes: payload.notes,
+          created_at: new Date().toISOString()
+        };
+        const currentQuotes = getLocalQuotes();
+        saveLocalQuotes([savedQuote, ...currentQuotes]);
+      }
 
       // Abrir modal de ticket de cotización
       setActiveQuoteTicket(savedQuote);
       // Recargar lista reciente
       loadRecentQuotes();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error de conexión al generar cotización');
+      setErrorMessage(err.message || 'Error al generar cotización');
     } finally {
       setIsSubmittingQuote(false);
     }

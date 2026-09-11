@@ -9,6 +9,16 @@ import { PriceListAndQuote } from './components/PriceListAndQuote';
 import { TicketModal } from './components/TicketModal';
 import { PaymentModal } from './components/PaymentModal';
 
+import {
+  getLocalSchools,
+  saveLocalSchools,
+  getLocalProducts,
+  saveLocalProducts,
+  getLocalOrders,
+  saveLocalOrders,
+  calculateLocalProductionData
+} from './utils/localFallback';
+
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'pos' | 'search' | 'production' | 'catalog' | 'quotes'>('pos');
 
@@ -38,27 +48,63 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // Cargar datos del servidor
+  // Cargar datos del servidor o fallback local
   const loadAllData = useCallback(async (isSilent = false) => {
     if (!isSilent) setIsRefreshing(true);
+    let schoolsLoaded: School[] | null = null;
+    let productsLoaded: Product[] | null = null;
+    let ordersLoaded: Order[] | null = null;
+    let prodLoaded: ProductionData | null = null;
+
     try {
       const [schoolsRes, productsRes, ordersRes, prodRes] = await Promise.all([
-        fetch('/api/schools'),
-        fetch('/api/products'),
-        fetch('/api/orders'),
-        fetch(`/api/production${selectedSchool !== 'todas' ? `?school=${encodeURIComponent(selectedSchool)}` : ''}`)
+        fetch('/api/schools').catch(() => null),
+        fetch('/api/products').catch(() => null),
+        fetch('/api/orders').catch(() => null),
+        fetch(`/api/production${selectedSchool !== 'todas' ? `?school=${encodeURIComponent(selectedSchool)}` : ''}`).catch(() => null)
       ]);
 
-      if (schoolsRes.ok) setSchools(await schoolsRes.json());
-      if (productsRes.ok) setProducts(await productsRes.json());
-      if (ordersRes.ok) setOrders(await ordersRes.json());
-      if (prodRes.ok) setProductionData(await prodRes.json());
+      if (schoolsRes && schoolsRes.ok) schoolsLoaded = await schoolsRes.json();
+      if (productsRes && productsRes.ok) productsLoaded = await productsRes.json();
+      if (ordersRes && ordersRes.ok) ordersLoaded = await ordersRes.json();
+      if (prodRes && prodRes.ok) prodLoaded = await prodRes.json();
     } catch (err) {
-      console.error('Error al sincronizar datos:', err);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      console.warn('Backend no disponible, usando fallback local:', err);
     }
+
+    if (schoolsLoaded && schoolsLoaded.length > 0) {
+      setSchools(schoolsLoaded);
+      saveLocalSchools(schoolsLoaded);
+    } else {
+      setSchools(getLocalSchools());
+    }
+
+    if (productsLoaded && productsLoaded.length > 0) {
+      setProducts(productsLoaded);
+      saveLocalProducts(productsLoaded);
+    } else {
+      setProducts(getLocalProducts());
+    }
+
+    if (ordersLoaded) {
+      setOrders(ordersLoaded);
+      saveLocalOrders(ordersLoaded);
+    } else {
+      const localOrd = getLocalOrders();
+      setOrders(localOrd);
+      if (!prodLoaded) {
+        prodLoaded = calculateLocalProductionData(localOrd, selectedSchool);
+      }
+    }
+
+    if (prodLoaded) {
+      setProductionData(prodLoaded);
+    } else {
+      setProductionData(calculateLocalProductionData(ordersLoaded || getLocalOrders(), selectedSchool));
+    }
+
+    setIsLoading(false);
+    setIsRefreshing(false);
   }, [selectedSchool]);
 
   useEffect(() => {
@@ -79,10 +125,34 @@ export const App: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: itemsToDeliver })
-      });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Error al actualizar entregas');
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        // Fallback local
+        setOrders(prev => {
+          const updated = prev.map(order => {
+            if (order.id !== orderId) return order;
+            const updatedItems = order.items.map(it => {
+              const toDel = itemsToDeliver.find(d => d.product_name === it.product_name && d.size === it.size);
+              if (!toDel) return it;
+              const newDel = Math.min(it.quantity, (it.delivered_quantity || 0) + toDel.quantity_to_deliver);
+              return {
+                ...it,
+                delivered_quantity: newDel,
+                status: newDel >= it.quantity ? ('entregado' as const) : newDel > 0 ? ('parcial' as const) : ('pendiente' as const)
+              };
+            });
+            const allDelivered = updatedItems.every(i => i.delivered_quantity >= i.quantity);
+            const someDelivered = updatedItems.some(i => i.delivered_quantity > 0);
+            return {
+              ...order,
+              items: updatedItems,
+              delivery_status: allDelivered ? ('entregado' as const) : someDelivered ? ('parcial' as const) : ('pendiente' as const)
+            };
+          });
+          saveLocalOrders(updated);
+          return updated;
+        });
       }
       await loadAllData(true);
     } catch (err: any) {
@@ -92,37 +162,65 @@ export const App: React.FC = () => {
 
   // Cuando se añade una escuela
   const handleSchoolAdded = (newSchool: School) => {
-    setSchools(prev => [...prev, newSchool].sort((a, b) => a.name.localeCompare(b.name)));
+    setSchools(prev => {
+      const updated = [...prev, newSchool].sort((a, b) => a.name.localeCompare(b.name));
+      saveLocalSchools(updated);
+      return updated;
+    });
   };
 
   // Cuando se edita una escuela
   const handleSchoolUpdated = (updatedSchool: School) => {
-    setSchools(prev => prev.map(s => s.id === updatedSchool.id ? updatedSchool : s).sort((a, b) => a.name.localeCompare(b.name)));
+    setSchools(prev => {
+      const updated = prev.map(s => s.id === updatedSchool.id ? updatedSchool : s).sort((a, b) => a.name.localeCompare(b.name));
+      saveLocalSchools(updated);
+      return updated;
+    });
   };
 
   // Cuando se elimina una escuela
   const handleSchoolDeleted = (schoolId: number) => {
-    setSchools(prev => prev.filter(s => s.id !== schoolId));
+    setSchools(prev => {
+      const updated = prev.filter(s => s.id !== schoolId);
+      saveLocalSchools(updated);
+      return updated;
+    });
   };
 
   // Cuando se añade un producto
   const handleProductAdded = (newProduct: Product) => {
-    setProducts(prev => [...prev, newProduct]);
+    setProducts(prev => {
+      const updated = [...prev, newProduct];
+      saveLocalProducts(updated);
+      return updated;
+    });
   };
 
   // Cuando se edita un producto
   const handleProductUpdated = (updatedProduct: Product) => {
-    setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+    setProducts(prev => {
+      const updated = prev.map(p => p.id === updatedProduct.id ? updatedProduct : p);
+      saveLocalProducts(updated);
+      return updated;
+    });
   };
 
   // Cuando se elimina un producto
   const handleProductDeleted = (productId: number) => {
-    setProducts(prev => prev.filter(p => p.id !== productId));
+    setProducts(prev => {
+      const updated = prev.filter(p => p.id !== productId);
+      saveLocalProducts(updated);
+      return updated;
+    });
   };
 
   // Cuando un pedido se actualiza (archivo o prioridad)
   const handleOrderUpdated = (updatedOrder: Order) => {
-    setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+    setOrders(prev => {
+      const updated = prev.map(o => o.id === updatedOrder.id ? updatedOrder : o);
+      saveLocalOrders(updated);
+      return updated;
+    });
     loadAllData(true);
   };
 
