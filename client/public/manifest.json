@@ -1,0 +1,56 @@
+{
+  "id": "/",
+  "name": "Uniformes Carrillo",
+  "short_name": "Carrillo POS",
+  "description": "Punto de Venta, Confección y Control de Pedidos de Uniformes Escolares",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Punto de Venta",
+      "url": "/?tab=pos",
+      "description": "Nueva Venta o Pedido"
+    },
+    {
+      "name": "Búsqueda de Clientes",
+      "url": "/?tab=search",
+      "description": "Consultar Pedidos y Entregas"
+    },
+    {
+      "name": "Control de Producción",
+      "url": "/?tab=production",
+      "description": "Prendas pendientes de confección"
+    }
+  ]
+}

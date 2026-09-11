@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e40af"/>
+      <stop offset="50%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="6 6" opacity="0.4"/>
+  <path d="M256 120 C235 120 220 135 220 152 C220 170 236 182 256 182 L256 210 M256 210 L140 260 C130 264 130 278 142 282 L370 282 C382 278 382 264 372 260 Z" fill="none" stroke="#fef08a" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)"/>
+  <path d="M144 270 L110 330 L160 350 L160 430 C160 440 170 448 180 448 L332 448 C342 448 352 440 352 430 L352 350 L402 330 L368 270 Z" fill="#ffffff" filter="url(#shadow)"/>
+  <path d="M200 270 L256 360 L312 270 L256 295 Z" fill="#e2e8f0"/>
+  <polygon points="256,310 268,325 264,410 256,425 248,410 244,325" fill="#dc2626"/>
+  <polygon points="250,305 262,305 266,322 246,322" fill="#b91c1c"/>
+  <circle cx="195" cy="340" r="14" fill="#eab308"/>
+  <path d="M190 336 L195 332 L200 336 L195 348 Z" fill="#1e3a8a"/>
+  <text x="256" y="485" text-anchor="middle" fill="#ffffff" font-size="28" font-weight="900" font-family="system-ui, sans-serif" letter-spacing="2">UNIFORMES CARRILLO</text>
+</svg>
