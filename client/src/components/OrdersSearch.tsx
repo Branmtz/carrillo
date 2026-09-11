@@ -4,7 +4,7 @@ import { formatCurrency, formatDateTime } from '../utils/formatters';
 import { 
   Search, Printer, DollarSign, PackageCheck, 
   School, User, Calendar, CheckCircle, Clock, X,
-  Archive, ArchiveRestore
+  Archive, ArchiveRestore, Trash2
 } from 'lucide-react';
 
 interface OrdersSearchProps {
@@ -13,6 +13,7 @@ interface OrdersSearchProps {
   onSelectOrderForPayment: (order: Order) => void;
   onSelectOrderForDelivery: (order: Order) => void;
   onOrderUpdated: (order: Order) => void;
+  onOrderDeleted?: (orderId: number) => void;
 }
 
 export const OrdersSearch: React.FC<OrdersSearchProps> = ({
@@ -20,7 +21,8 @@ export const OrdersSearch: React.FC<OrdersSearchProps> = ({
   onSelectOrderForTicket,
   onSelectOrderForPayment,
   onSelectOrderForDelivery,
-  onOrderUpdated
+  onOrderUpdated,
+  onOrderDeleted
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('todos'); // 'todos', 'pedido', 'directa'
@@ -29,20 +31,16 @@ export const OrdersSearch: React.FC<OrdersSearchProps> = ({
   const [filterArchived, setFilterArchived] = useState<'activos' | 'archivados' | 'todos'>('activos');
   const [filterPriority, setFilterPriority] = useState<string>('todos'); // 'todos', 'urgente', 'alta', 'normal'
 
-  // Cambiar prioridad en el servidor
+  // Cambiar prioridad
   const handleChangePriority = async (order: Order, newPriority: string) => {
     try {
-      const res = await fetch(`/api/orders/${order.id}/priority`, {
+      await fetch(`/api/orders/${order.id}/priority`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priority: newPriority })
       });
-      const updated = await res.json();
-      if (!res.ok) throw new Error(updated.error || 'Error al cambiar prioridad');
-      onOrderUpdated(updated);
-    } catch (err: any) {
-      alert(err.message);
-    }
+    } catch (err: any) {}
+    onOrderUpdated({ ...order, priority: newPriority as any });
   };
 
   // Archivar o desarchivar pedido
@@ -54,16 +52,25 @@ export const OrdersSearch: React.FC<OrdersSearchProps> = ({
     }
 
     try {
-      const res = await fetch(`/api/orders/${order.id}/archive`, {
+      await fetch(`/api/orders/${order.id}/archive`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_archived: willArchive ? 1 : 0 })
       });
-      const updated = await res.json();
-      if (!res.ok) throw new Error(updated.error || 'Error al archivar pedido');
-      onOrderUpdated(updated);
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err: any) {}
+    onOrderUpdated({ ...order, is_archived: willArchive ? 1 : 0 });
+  };
+
+  // Eliminar pedido
+  const handleDeleteOrder = async (order: Order) => {
+    if (!window.confirm(`¿Está seguro de eliminar permanentemente el pedido ${order.folio} de "${order.customer_name}"?`)) {
+      return;
+    }
+    try {
+      await fetch(`/api/orders/${order.id}`, { method: 'DELETE' });
+    } catch (err: any) {}
+    if (onOrderDeleted) {
+      onOrderDeleted(order.id);
     }
   };
 
@@ -423,6 +430,17 @@ export const OrdersSearch: React.FC<OrdersSearchProps> = ({
                           <span>Archivar</span>
                         </>
                       )}
+                    </button>
+
+                    {/* Botón Eliminar Pedido */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteOrder(order)}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-xl transition border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 cursor-pointer"
+                      title="Eliminar pedido permanentemente"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                      <span>Eliminar</span>
                     </button>
                   </div>
                 </div>

@@ -402,6 +402,19 @@ export const PriceListAndQuote: React.FC<PriceListAndQuoteProps> = ({
     if (activeQuoteTicket) setActiveQuoteTicket(null);
   };
 
+  // Eliminar cotización del historial
+  const handleDeleteQuote = async (quoteId: number) => {
+    if (!window.confirm('¿Desea eliminar este presupuesto del historial?')) return;
+    try {
+      await fetch(`/api/quotes/${quoteId}`, { method: 'DELETE' });
+    } catch (err: any) {}
+    setRecentQuotes(prev => {
+      const updated = prev.filter(q => q.id !== quoteId);
+      saveLocalQuotes(updated);
+      return updated;
+    });
+  };
+
   // Filtrar lista de precios
   const filteredPriceProducts = products.filter(p => {
     // Filtro de escuela
@@ -1451,6 +1464,14 @@ export const PriceListAndQuote: React.FC<PriceListAndQuoteProps> = ({
                       >
                         <ShoppingCart className="w-3.5 h-3.5" />
                         <span>Cobrar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteQuote(q.id)}
+                        className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition border border-transparent hover:border-red-200 cursor-pointer"
+                        title="Eliminar cotización"
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>

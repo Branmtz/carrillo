@@ -224,6 +224,16 @@ export const App: React.FC = () => {
     loadAllData(true);
   };
 
+  // Cuando se elimina un pedido
+  const handleOrderDeleted = (orderId: number) => {
+    setOrders(prev => {
+      const updated = prev.filter(o => o.id !== orderId);
+      saveLocalOrders(updated);
+      return updated;
+    });
+    loadAllData(true);
+  };
+
   // Contadores para el navbar
   const pendingPiecesCount = productionData?.aggregatedPending?.reduce(
     (acc, it) => acc + it.pending_units, 0
@@ -284,6 +294,7 @@ export const App: React.FC = () => {
                   setActiveTab('production');
                 }}
                 onOrderUpdated={handleOrderUpdated}
+                onOrderDeleted={handleOrderDeleted}
               />
             )}
 
