@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Order } from '../types';
 import { formatCurrency } from '../utils/formatters';
 import { DollarSign, X, Check, Banknote, CreditCard, ArrowRightLeft } from 'lucide-react';
+import { localDb } from '../services/localDatabase';
 
 interface PaymentModalProps {
   order: Order;
@@ -24,7 +25,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setAmount(String(order.balance_due));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const payNum = parseFloat(amount);
     if (isNaN(payNum) || payNum <= 0) {
@@ -41,44 +42,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setErrorMessage('');
 
     try {
-      let updatedOrder: Order | null = null;
-      try {
-        const res = await fetch(`/api/orders/${order.id}/payments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: payNum,
-            payment_method: paymentMethod,
-            notes: notes.trim()
-          })
-        });
-
-        if (res.ok) {
-          updatedOrder = await res.json();
-        }
-      } catch (e) {}
-
-      if (!updatedOrder) {
-        // Fallback local cuando no hay backend (GitHub Pages / offline)
-        const newDeposit = (order.deposit_amount || 0) + payNum;
-        const newBalance = Math.max(0, (order.total_amount || 0) - newDeposit);
-        const newPayment = {
-          id: Date.now(),
-          order_id: order.id,
-          amount: payNum,
-          payment_method: paymentMethod,
-          notes: notes.trim(),
-          created_at: new Date().toISOString()
-        };
-        updatedOrder = {
-          ...order,
-          deposit_amount: newDeposit,
-          balance_due: newBalance,
-          payment_status: newBalance <= 0 ? 'liquidado' : 'pendiente',
-          payments: [...(order.payments || []), newPayment]
-        };
-      }
-
+      const updatedOrder = localDb.addPayment(order.id, payNum, paymentMethod, notes.trim());
       onPaymentSuccess(updatedOrder);
       onClose();
     } catch (err: any) {

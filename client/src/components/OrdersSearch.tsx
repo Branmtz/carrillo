@@ -6,6 +6,7 @@ import {
   School, User, Calendar, CheckCircle, Clock, X,
   Archive, ArchiveRestore, Trash2
 } from 'lucide-react';
+import { localDb } from '../services/localDatabase';
 
 interface OrdersSearchProps {
   orders: Order[];
@@ -24,7 +25,7 @@ export const OrdersSearch: React.FC<OrdersSearchProps> = ({
   onOrderUpdated,
   onOrderDeleted
 }) => {
-  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('todos'); // 'todos', 'pedido', 'directa'
   const [filterPayment, setFilterPayment] = useState<string>('todos'); // 'todos', 'con_saldo', 'liquidado'
   const [filterDelivery, setFilterDelivery] = useState<string>('todos'); // 'todos', 'pendiente', 'entregado'
@@ -32,43 +33,29 @@ export const OrdersSearch: React.FC<OrdersSearchProps> = ({
   const [filterPriority, setFilterPriority] = useState<string>('todos'); // 'todos', 'urgente', 'alta', 'normal'
 
   // Cambiar prioridad
-  const handleChangePriority = async (order: Order, newPriority: string) => {
-    try {
-      await fetch(`/api/orders/${order.id}/priority`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priority: newPriority })
-      });
-    } catch (err: any) {}
-    onOrderUpdated({ ...order, priority: newPriority as any });
+  const handleChangePriority = (order: Order, newPriority: string) => {
+    const updated = localDb.updateOrderPriority(order.id, newPriority);
+    onOrderUpdated(updated);
   };
 
   // Archivar o desarchivar pedido
-  const handleToggleArchive = async (order: Order) => {
+  const handleToggleArchive = (order: Order) => {
     const willArchive = !order.is_archived;
     const action = willArchive ? 'archivar' : 'desarchivar';
     if (!window.confirm(`¿Desea ${action} el pedido ${order.folio} de ${order.customer_name}?`)) {
       return;
     }
 
-    try {
-      await fetch(`/api/orders/${order.id}/archive`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_archived: willArchive ? 1 : 0 })
-      });
-    } catch (err: any) {}
-    onOrderUpdated({ ...order, is_archived: willArchive ? 1 : 0 });
+    const updated = localDb.toggleOrderArchive(order.id, willArchive ? 1 : 0);
+    onOrderUpdated(updated);
   };
 
   // Eliminar pedido
-  const handleDeleteOrder = async (order: Order) => {
+  const handleDeleteOrder = (order: Order) => {
     if (!window.confirm(`¿Está seguro de eliminar permanentemente el pedido ${order.folio} de "${order.customer_name}"?`)) {
       return;
     }
-    try {
-      await fetch(`/api/orders/${order.id}`, { method: 'DELETE' });
-    } catch (err: any) {}
+    localDb.deleteOrder(order.id);
     if (onOrderDeleted) {
       onOrderDeleted(order.id);
     }

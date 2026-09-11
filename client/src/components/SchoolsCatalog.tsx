@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { School, Product } from '../types';
 import { formatCurrency } from '../utils/formatters';
 import { School as SchoolIcon, ShoppingBag, Plus, Trash2, Pencil, AlertCircle, X, Check } from 'lucide-react';
+import { localDb } from '../services/localDatabase';
 
 interface SchoolsCatalogProps {
   schools: School[];
@@ -59,41 +60,23 @@ export const SchoolsCatalog: React.FC<SchoolsCatalogProps> = ({
   const [isUpdatingProduct, setIsUpdatingProduct] = useState(false);
   const [editProductError, setEditProductError] = useState('');
 
-  const handleAddSchool = async (e: React.FormEvent) => {
+  const handleAddSchool = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSchoolName.trim()) return;
 
     setIsSubmittingSchool(true);
     setSchoolError('');
 
-    let newSchoolObj: School | null = null;
     try {
-      const res = await fetch('/api/schools', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newSchoolName.trim(),
-          code: newSchoolCode.trim()
-        })
-      });
-      if (res.ok) {
-        newSchoolObj = await res.json();
-      }
-    } catch (err: any) {}
-
-    if (!newSchoolObj) {
-      newSchoolObj = {
-        id: Date.now(),
-        name: newSchoolName.trim(),
-        code: newSchoolCode.trim(),
-        created_at: new Date().toISOString()
-      };
+      const newSchoolObj = localDb.addSchool(newSchoolName.trim(), newSchoolCode.trim());
+      onSchoolAdded(newSchoolObj);
+      setNewSchoolName('');
+      setNewSchoolCode('');
+    } catch (err: any) {
+      setSchoolError(err.message || 'Error al guardar la escuela');
+    } finally {
+      setIsSubmittingSchool(false);
     }
-
-    onSchoolAdded(newSchoolObj);
-    setNewSchoolName('');
-    setNewSchoolCode('');
-    setIsSubmittingSchool(false);
   };
 
   const handleStartEditSchool = (school: School) => {
@@ -103,90 +86,57 @@ export const SchoolsCatalog: React.FC<SchoolsCatalogProps> = ({
     setEditSchoolError('');
   };
 
-  const handleSaveEditSchool = async (e: React.FormEvent) => {
+  const handleSaveEditSchool = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSchool || !editSchoolName.trim()) return;
 
     setIsUpdatingSchool(true);
     setEditSchoolError('');
 
-    let updatedSchoolObj: School | null = null;
     try {
-      const res = await fetch(`/api/schools/${editingSchool.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editSchoolName.trim(),
-          code: editSchoolCode.trim()
-        })
-      });
-      if (res.ok) {
-        updatedSchoolObj = await res.json();
-      }
-    } catch (err: any) {}
-
-    if (!updatedSchoolObj) {
-      updatedSchoolObj = {
-        ...editingSchool,
-        name: editSchoolName.trim(),
-        code: editSchoolCode.trim()
-      };
+      const updatedSchoolObj = localDb.updateSchool(editingSchool.id, editSchoolName.trim(), editSchoolCode.trim());
+      onSchoolUpdated(updatedSchoolObj);
+      setEditingSchool(null);
+    } catch (err: any) {
+      setEditSchoolError(err.message || 'Error al actualizar la escuela');
+    } finally {
+      setIsUpdatingSchool(false);
     }
-
-    onSchoolUpdated(updatedSchoolObj);
-    setEditingSchool(null);
-    setIsUpdatingSchool(false);
   };
 
-  const handleDeleteSchool = async (school: School) => {
+  const handleDeleteSchool = (school: School) => {
     if (!window.confirm(`¿Está seguro de eliminar la escuela "${school.name}" del catálogo?`)) return;
-    try {
-      await fetch(`/api/schools/${school.id}`, { method: 'DELETE' });
-    } catch (err: any) {}
+    localDb.deleteSchool(school.id);
     onSchoolDeleted(school.id);
   };
 
-  const handleAddProduct = async (e: React.FormEvent) => {
+  const handleAddProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProductName.trim()) return;
 
     setIsSubmittingProduct(true);
     setProductError('');
 
-    const payload = {
-      name: newProductName.trim(),
-      category: newProductCategory.trim(),
-      school_name: newProductSchool.trim(),
-      default_price: parseFloat(newProductPrice) || 0,
-      package_price: parseFloat(newProductPackagePrice) || 0
-    };
-
-    let newProductObj: Product | null = null;
     try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        newProductObj = await res.json();
-      }
-    } catch (err: any) {}
-
-    if (!newProductObj) {
-      newProductObj = {
-        id: Date.now(),
-        ...payload,
-        created_at: new Date().toISOString()
+      const payload = {
+        name: newProductName.trim(),
+        category: newProductCategory.trim(),
+        school_name: newProductSchool.trim(),
+        default_price: parseFloat(newProductPrice) || 0,
+        package_price: parseFloat(newProductPackagePrice) || 0
       };
-    }
 
-    onProductAdded(newProductObj);
-    setNewProductName('');
-    setNewProductSchool('Todas');
-    setNewProductPrice('350');
-    setNewProductPackagePrice('300');
-    setIsSubmittingProduct(false);
+      const newProductObj = localDb.addProduct(payload);
+      onProductAdded(newProductObj);
+      setNewProductName('');
+      setNewProductSchool('Todas');
+      setNewProductPrice('350');
+      setNewProductPackagePrice('300');
+    } catch (err: any) {
+      setProductError(err.message || 'Error al guardar la prenda');
+    } finally {
+      setIsSubmittingProduct(false);
+    }
   };
 
   const handleStartEditProduct = (product: Product) => {
@@ -199,50 +149,35 @@ export const SchoolsCatalog: React.FC<SchoolsCatalogProps> = ({
     setEditProductError('');
   };
 
-  const handleSaveEditProduct = async (e: React.FormEvent) => {
+  const handleSaveEditProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct || !editProductName.trim()) return;
 
     setIsUpdatingProduct(true);
     setEditProductError('');
 
-    const payload = {
-      name: editProductName.trim(),
-      category: editProductCategory.trim(),
-      school_name: editProductSchool.trim(),
-      default_price: parseFloat(editProductPrice) || 0,
-      package_price: parseFloat(editProductPackagePrice) || 0
-    };
-
-    let updatedProductObj: Product | null = null;
     try {
-      const res = await fetch(`/api/products/${editingProduct.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        updatedProductObj = await res.json();
-      }
-    } catch (err: any) {}
-
-    if (!updatedProductObj) {
-      updatedProductObj = {
-        ...editingProduct,
-        ...payload
+      const payload = {
+        name: editProductName.trim(),
+        category: editProductCategory.trim(),
+        school_name: editProductSchool.trim(),
+        default_price: parseFloat(editProductPrice) || 0,
+        package_price: parseFloat(editProductPackagePrice) || 0
       };
-    }
 
-    onProductUpdated(updatedProductObj);
-    setEditingProduct(null);
-    setIsUpdatingProduct(false);
+      const updatedProductObj = localDb.updateProduct(editingProduct.id, payload);
+      onProductUpdated(updatedProductObj);
+      setEditingProduct(null);
+    } catch (err: any) {
+      setEditProductError(err.message || 'Error al actualizar la prenda');
+    } finally {
+      setIsUpdatingProduct(false);
+    }
   };
 
-  const handleDeleteProduct = async (product: Product) => {
+  const handleDeleteProduct = (product: Product) => {
     if (!window.confirm(`¿Está seguro de eliminar la prenda "${product.name}" del catálogo?`)) return;
-    try {
-      await fetch(`/api/products/${product.id}`, { method: 'DELETE' });
-    } catch (err: any) {}
+    localDb.deleteProduct(product.id);
     onProductDeleted(product.id);
   };
 

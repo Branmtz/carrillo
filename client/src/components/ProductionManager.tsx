@@ -7,6 +7,7 @@ import {
   DollarSign, FileDown, School as SchoolIcon, 
   User, Phone, AlertTriangle
 } from 'lucide-react';
+import { localDb } from '../services/localDatabase';
 
 interface ProductionManagerProps {
   productionData: ProductionData | null;
@@ -79,14 +80,9 @@ export const ProductionManager: React.FC<ProductionManagerProps> = ({
   const totalPendingPieces = aggregatedPending.reduce((acc, it) => acc + it.pending_units, 0);
 
   // Cambiar prioridad directamente desde la vista de producción
-  const handleChangePriority = async (order: Order, newPriority: string) => {
+  const handleChangePriority = (order: Order, newPriority: string) => {
     try {
-      const res = await fetch(`/api/orders/${order.id}/priority`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priority: newPriority })
-      });
-      if (!res.ok) throw new Error('Error al cambiar prioridad');
+      localDb.updateOrderPriority(order.id, newPriority);
       onRefresh();
     } catch (err: any) {
       alert(err.message);

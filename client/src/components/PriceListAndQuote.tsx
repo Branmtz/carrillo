@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { School, Product, Quote, QuoteItem, OrderItem } from '../types';
 import { formatCurrency } from '../utils/formatters';
 import { generateSchoolPriceListPDF } from '../utils/pdfGenerator';
-import { getLocalQuotes, saveLocalQuotes } from '../utils/localFallback';
+import { localDb } from '../services/localDatabase';
 import { QuoteTicketModal } from './QuoteTicketModal';
 import { 
   Calculator, FileSpreadsheet, Search, School as SchoolIcon, 
@@ -103,25 +103,16 @@ export const PriceListAndQuote: React.FC<PriceListAndQuoteProps> = ({
   }, [schools, quoteSchool]);
 
   // Cargar cotizaciones recientes
-  const loadRecentQuotes = async () => {
+  const loadRecentQuotes = () => {
     setIsLoadingQuotes(true);
-    let quotesList: Quote[] | null = null;
     try {
-      const res = await fetch('/api/quotes').catch(() => null);
-      if (res && res.ok) {
-        quotesList = await res.json();
-      }
-    } catch (err) {
-      console.warn('Error al cargar cotizaciones del backend:', err);
-    }
-
-    if (quotesList && quotesList.length >= 0) {
+      const quotesList = localDb.getQuotes();
       setRecentQuotes(quotesList);
-      saveLocalQuotes(quotesList);
-    } else {
-      setRecentQuotes(getLocalQuotes());
+    } catch (err) {
+      console.warn('Error al cargar cotizaciones:', err);
+    } finally {
+      setIsLoadingQuotes(false);
     }
-    setIsLoadingQuotes(false);
   };
 
   useEffect(() => {
@@ -335,37 +326,7 @@ export const PriceListAndQuote: React.FC<PriceListAndQuoteProps> = ({
         notes: quoteNotes.trim()
       };
 
-      let savedQuote: Quote | null = null;
-      try {
-        const res = await fetch('/api/quotes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-          savedQuote = await res.json();
-        }
-      } catch (e) {}
-
-      if (!savedQuote) {
-        // Fallback local (GitHub Pages)
-        const quoteId = Date.now();
-        savedQuote = {
-          id: quoteId,
-          folio: `COT-${Math.floor(1000 + Math.random() * 9000)}`,
-          customer_name: payload.customer_name,
-          customer_phone: payload.customer_phone,
-          school_name: payload.school_name,
-          seller_name: payload.seller_name,
-          total_amount: payload.total_amount,
-          items: quoteItems,
-          notes: payload.notes,
-          created_at: new Date().toISOString()
-        };
-        const currentQuotes = getLocalQuotes();
-        saveLocalQuotes([savedQuote, ...currentQuotes]);
-      }
+      const savedQuote = localDb.createQuote(payload);
 
       // Abrir modal de ticket de cotización
       setActiveQuoteTicket(savedQuote);
@@ -403,16 +364,10 @@ export const PriceListAndQuote: React.FC<PriceListAndQuoteProps> = ({
   };
 
   // Eliminar cotización del historial
-  const handleDeleteQuote = async (quoteId: number) => {
+  const handleDeleteQuote = (quoteId: number) => {
     if (!window.confirm('¿Desea eliminar este presupuesto del historial?')) return;
-    try {
-      await fetch(`/api/quotes/${quoteId}`, { method: 'DELETE' });
-    } catch (err: any) {}
-    setRecentQuotes(prev => {
-      const updated = prev.filter(q => q.id !== quoteId);
-      saveLocalQuotes(updated);
-      return updated;
-    });
+    localDb.deleteQuote(quoteId);
+    loadRecentQuotes();
   };
 
   // Filtrar lista de precios

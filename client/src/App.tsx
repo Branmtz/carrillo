@@ -9,15 +9,7 @@ import { PriceListAndQuote } from './components/PriceListAndQuote';
 import { TicketModal } from './components/TicketModal';
 import { PaymentModal } from './components/PaymentModal';
 
-import {
-  getLocalSchools,
-  saveLocalSchools,
-  getLocalProducts,
-  saveLocalProducts,
-  getLocalOrders,
-  saveLocalOrders,
-  calculateLocalProductionData
-} from './utils/localFallback';
+import { localDb } from './services/localDatabase';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'pos' | 'search' | 'production' | 'catalog' | 'quotes'>('pos');
@@ -48,60 +40,19 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  // Cargar datos del servidor o fallback local
-  const loadAllData = useCallback(async (isSilent = false) => {
+  // Cargar datos exclusivamente de la base local del dispositivo
+  const loadAllData = useCallback((isSilent = false) => {
     if (!isSilent) setIsRefreshing(true);
-    let schoolsLoaded: School[] | null = null;
-    let productsLoaded: Product[] | null = null;
-    let ordersLoaded: Order[] | null = null;
-    let prodLoaded: ProductionData | null = null;
+    
+    const loadedSchools = localDb.getSchools();
+    const loadedProducts = localDb.getProducts();
+    const loadedOrders = localDb.getOrders();
+    const loadedProduction = localDb.getProductionData(selectedSchool);
 
-    try {
-      const [schoolsRes, productsRes, ordersRes, prodRes] = await Promise.all([
-        fetch('/api/schools').catch(() => null),
-        fetch('/api/products').catch(() => null),
-        fetch('/api/orders').catch(() => null),
-        fetch(`/api/production${selectedSchool !== 'todas' ? `?school=${encodeURIComponent(selectedSchool)}` : ''}`).catch(() => null)
-      ]);
-
-      if (schoolsRes && schoolsRes.ok) schoolsLoaded = await schoolsRes.json();
-      if (productsRes && productsRes.ok) productsLoaded = await productsRes.json();
-      if (ordersRes && ordersRes.ok) ordersLoaded = await ordersRes.json();
-      if (prodRes && prodRes.ok) prodLoaded = await prodRes.json();
-    } catch (err) {
-      console.warn('Backend no disponible, usando fallback local:', err);
-    }
-
-    if (schoolsLoaded && schoolsLoaded.length > 0) {
-      setSchools(schoolsLoaded);
-      saveLocalSchools(schoolsLoaded);
-    } else {
-      setSchools(getLocalSchools());
-    }
-
-    if (productsLoaded && productsLoaded.length > 0) {
-      setProducts(productsLoaded);
-      saveLocalProducts(productsLoaded);
-    } else {
-      setProducts(getLocalProducts());
-    }
-
-    if (ordersLoaded) {
-      setOrders(ordersLoaded);
-      saveLocalOrders(ordersLoaded);
-    } else {
-      const localOrd = getLocalOrders();
-      setOrders(localOrd);
-      if (!prodLoaded) {
-        prodLoaded = calculateLocalProductionData(localOrd, selectedSchool);
-      }
-    }
-
-    if (prodLoaded) {
-      setProductionData(prodLoaded);
-    } else {
-      setProductionData(calculateLocalProductionData(ordersLoaded || getLocalOrders(), selectedSchool));
-    }
+    setSchools(loadedSchools);
+    setProducts(loadedProducts);
+    setOrders(loadedOrders);
+    setProductionData(loadedProduction);
 
     setIsLoading(false);
     setIsRefreshing(false);
@@ -113,124 +64,56 @@ export const App: React.FC = () => {
 
   // Manejador de creación de orden
   const handleOrderCreated = (newOrder: Order) => {
-    setOrders(prev => [newOrder, ...prev]);
     loadAllData(true);
     setTicketOrder(newOrder); // Abrir ticket automáticamente
   };
 
   // Manejador de entrega de productos
-  const handleDeliverItems = async (orderId: number, itemsToDeliver: any[]) => {
-    try {
-      const res = await fetch(`/api/orders/${orderId}/deliveries`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToDeliver })
-      }).catch(() => null);
-
-      if (!res || !res.ok) {
-        // Fallback local
-        setOrders(prev => {
-          const updated = prev.map(order => {
-            if (order.id !== orderId) return order;
-            const updatedItems = order.items.map(it => {
-              const toDel = itemsToDeliver.find(d => d.product_name === it.product_name && d.size === it.size);
-              if (!toDel) return it;
-              const newDel = Math.min(it.quantity, (it.delivered_quantity || 0) + toDel.quantity_to_deliver);
-              return {
-                ...it,
-                delivered_quantity: newDel,
-                status: newDel >= it.quantity ? ('entregado' as const) : newDel > 0 ? ('parcial' as const) : ('pendiente' as const)
-              };
-            });
-            const allDelivered = updatedItems.every(i => i.delivered_quantity >= i.quantity);
-            const someDelivered = updatedItems.some(i => i.delivered_quantity > 0);
-            return {
-              ...order,
-              items: updatedItems,
-              delivery_status: allDelivered ? ('entregado' as const) : someDelivered ? ('parcial' as const) : ('pendiente' as const)
-            };
-          });
-          saveLocalOrders(updated);
-          return updated;
-        });
-      }
-      await loadAllData(true);
-    } catch (err: any) {
-      alert(err.message);
-    }
+  const handleDeliverItems = async (_orderId: number, itemsToDeliver: any[]) => {
+    localDb.deliverItems(_orderId, itemsToDeliver);
+    loadAllData(true);
   };
 
   // Cuando se añade una escuela
-  const handleSchoolAdded = (newSchool: School) => {
-    setSchools(prev => {
-      const updated = [...prev, newSchool].sort((a, b) => a.name.localeCompare(b.name));
-      saveLocalSchools(updated);
-      return updated;
-    });
+  const handleSchoolAdded = (_newSchool: School) => {
+    loadAllData(true);
   };
 
   // Cuando se edita una escuela
-  const handleSchoolUpdated = (updatedSchool: School) => {
-    setSchools(prev => {
-      const updated = prev.map(s => s.id === updatedSchool.id ? updatedSchool : s).sort((a, b) => a.name.localeCompare(b.name));
-      saveLocalSchools(updated);
-      return updated;
-    });
+  const handleSchoolUpdated = (_updatedSchool: School) => {
+    loadAllData(true);
   };
 
   // Cuando se elimina una escuela
   const handleSchoolDeleted = (schoolId: number) => {
-    setSchools(prev => {
-      const updated = prev.filter(s => s.id !== schoolId);
-      saveLocalSchools(updated);
-      return updated;
-    });
+    localDb.deleteSchool(schoolId);
+    loadAllData(true);
   };
 
   // Cuando se añade un producto
-  const handleProductAdded = (newProduct: Product) => {
-    setProducts(prev => {
-      const updated = [...prev, newProduct];
-      saveLocalProducts(updated);
-      return updated;
-    });
+  const handleProductAdded = (_newProduct: Product) => {
+    loadAllData(true);
   };
 
   // Cuando se edita un producto
-  const handleProductUpdated = (updatedProduct: Product) => {
-    setProducts(prev => {
-      const updated = prev.map(p => p.id === updatedProduct.id ? updatedProduct : p);
-      saveLocalProducts(updated);
-      return updated;
-    });
+  const handleProductUpdated = (_updatedProduct: Product) => {
+    loadAllData(true);
   };
 
   // Cuando se elimina un producto
   const handleProductDeleted = (productId: number) => {
-    setProducts(prev => {
-      const updated = prev.filter(p => p.id !== productId);
-      saveLocalProducts(updated);
-      return updated;
-    });
+    localDb.deleteProduct(productId);
+    loadAllData(true);
   };
 
   // Cuando un pedido se actualiza (archivo o prioridad)
-  const handleOrderUpdated = (updatedOrder: Order) => {
-    setOrders(prev => {
-      const updated = prev.map(o => o.id === updatedOrder.id ? updatedOrder : o);
-      saveLocalOrders(updated);
-      return updated;
-    });
+  const handleOrderUpdated = (_updatedOrder: Order) => {
     loadAllData(true);
   };
 
   // Cuando se elimina un pedido
   const handleOrderDeleted = (orderId: number) => {
-    setOrders(prev => {
-      const updated = prev.filter(o => o.id !== orderId);
-      saveLocalOrders(updated);
-      return updated;
-    });
+    localDb.deleteOrder(orderId);
     loadAllData(true);
   };
 
